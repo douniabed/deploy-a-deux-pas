@@ -41,11 +41,13 @@
     mode: '0755'
 
 - name: Download backend JAR from Nexus (on controller)
-  get_url:
-    url: "{{ nexus_url }}/repository/{{ nexus_repo }}/fr/a-deux-pas/{{ app_name }}/{{ back_app_version }}/{{ app_name }}-{{ back_app_version }}.jar"
+  maven_artifact:
+    group_id: fr.a-deux-pas
+    artifact_id: "{{ app_name }}"
+    version: "{{ back_app_version }}"
+    extension: jar
+    repository_url: "{{ nexus_url }}/repository/{{ nexus_repo }}"
     dest: "/tmp/{{ app_name }}-{{ back_app_version }}.jar"
-    force: yes
-    mode: '0644'
   delegate_to: localhost
   register: download_result
 
