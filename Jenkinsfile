@@ -53,6 +53,16 @@ pipeline {
                     // Set deployment flags
                     env.DEPLOY_BACKEND = params.BACK_APP_VERSION ? 'true' : 'false'
                     env.DEPLOY_FRONTEND = params.FRONT_APP_VERSION ? 'true' : 'false'
+
+                    // Set build display name with versions
+                    def buildName = "${params.TARGET_ENV}:"
+                    if (params.BACK_APP_VERSION) {
+                        buildName += " Back ${params.BACK_APP_VERSION}"
+                    }
+                    if (params.FRONT_APP_VERSION) {
+                        buildName += " Front ${params.FRONT_APP_VERSION}"
+                    }
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} - ${buildName}"
                 }
             }
         }
