@@ -40,25 +40,26 @@
     state: directory
     mode: '0755'
 
-- name: Download backend JAR from Nexus
+- name: Download backend JAR from Nexus (on controller)
   get_url:
     url: "{{ nexus_url }}/repository/{{ nexus_repo }}/fr/a-deux-pas/{{ app_name }}/{{ back_app_version }}/{{ app_name }}-{{ back_app_version }}.jar"
-    dest: "{{ back_deploy_dir }}/{{ app_name }}.jar"
-    username: "{{ nexus_username }}"
-    password: "{{ nexus_password }}"
+    dest: "/tmp/{{ app_name }}-{{ back_app_version }}.jar"
     force: yes
     mode: '0644'
+  delegate_to: localhost
   register: download_result
 
-- name: Verify JAR file was downloaded
-  stat:
-    path: "{{ back_deploy_dir }}/{{ app_name }}.jar"
-  register: jar_stat
+- name: Copy backend JAR to target machine
+  copy:
+    src: "/tmp/{{ app_name }}-{{ back_app_version }}.jar"
+    dest: "{{ back_deploy_dir }}/{{ app_name }}.jar"
+    mode: '0644'
 
-- name: Fail if JAR file was not downloaded
-  fail:
-    msg: "Failed to download JAR file from Nexus"
-  when: not jar_stat.stat.exists
+- name: Clean up JAR from controller
+  file:
+    path: "/tmp/{{ app_name }}-{{ back_app_version }}.jar"
+    state: absent
+  delegate_to: localhost
 
 - name: Copy application properties for environment
   copy:

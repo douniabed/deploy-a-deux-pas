@@ -4,8 +4,6 @@
   gather_facts: yes
 
   vars:
-    nexus_username: "{{ lookup('env', 'NEXUS_USERNAME') }}"
-    nexus_password: "{{ lookup('env', 'NEXUS_PASSWORD') }}"
     http_auth_password: "{{ lookup('env', 'HTTP_AUTH_PASSWORD') | default(omit) }}"
 
   tasks:

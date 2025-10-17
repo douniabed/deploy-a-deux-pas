@@ -24,14 +24,14 @@ Both DEV and PROD environments run on the same host with different directories a
 ### DEV Environment
 - **Frontend**: `/srv/readresolve.tech/magnolia/www/a-deux-pas-dev`
 - **Backend**: `/srv/readresolve.tech/magnolia/api/a-deux-pas-dev`
-- **Backend Port**: 8081
+- **Backend Port**: 8901
 - **Frontend URL**: https://magnolia.readresolve.tech/a-deux-pas-dev
 - **Backend URL**: https://magnolia.readresolve.tech/api/a-deux-pas-dev
 
 ### PROD Environment
 - **Frontend**: `/srv/readresolve.tech/magnolia/www/a-deux-pas-prod`
 - **Backend**: `/srv/readresolve.tech/magnolia/api/a-deux-pas-prod`
-- **Backend Port**: 8080
+- **Backend Port**: 8902
 - **Frontend URL**: https://magnolia.readresolve.tech/a-deux-pas-prod
 - **Backend URL**: https://magnolia.readresolve.tech/api/a-deux-pas-prod
 
@@ -45,9 +45,10 @@ The pipeline accepts three parameters:
 
 ## Required Jenkins Credentials
 
-1. **nexus-credentials** (Username/Password): Nexus repository credentials
-2. **magnolia-ssh-password** (Secret text): SSH password for magnolia user
-3. **webuser-http-password** (Secret text): HTTP basic auth password for version verification
+1. **magnolia-ssh-password** (Secret text): SSH password for magnolia user
+2. **webuser-http-password** (Secret text): HTTP basic auth password for frontend version verification
+
+Note: Nexus repository access does not require authentication.
 
 ## Deployment Flow
 
@@ -56,24 +57,27 @@ The pipeline accepts three parameters:
 3. **Backend Deployment** (if BACK_APP_VERSION provided):
    - Stop existing application (systemd user service)
    - Clean deployment directory
-   - Download JAR from Nexus
+   - Download JAR from Nexus (on Jenkins controller, then copied to target)
    - Copy environment-specific application.properties
    - Create/update systemd user service
-   - Start application with correct port (8080 for PROD, 8081 for DEV)
-   - Verify version via HTTP
+   - Start application with correct port (8902 for PROD, 8901 for DEV)
+   - Verify version via internal HTTP endpoint with cache-busting headers
 4. **Frontend Deployment** (if FRONT_APP_VERSION provided):
    - Clean deployment directory
-   - Download tar.gz from Nexus
+   - Download tar.gz from Nexus (on Jenkins controller, then copied to target)
    - Extract to deployment directory
-   - Verify version via HTTP
+   - Update config.json with environment-specific backend API URL
+   - Verify version via external HTTPS endpoint with cache-busting headers and basic auth
 
 ## Version Verification
 
 Both frontend and backend include version JSON files that are verified after deployment:
-- **Frontend**: `/frontend-version.json`
-- **Backend**: `/backend-version.json`
+- **Frontend**: `/assets/frontend-version.json` (accessed via HTTPS with basic auth)
+- **Backend**: `/backend-version.json` (accessed via internal HTTP)
 
-The pipeline checks that the deployed version matches the requested version.
+The pipeline uses cache-busting headers to ensure fresh version information and checks that the deployed version matches the requested version.
+
+**Build Naming**: Each build is automatically named with the environment and deployed versions, e.g., `#42 - DEV: Back 2.0.0-SNAPSHOT Front 2.0.0-SNAPSHOT`
 
 ## Usage Examples
 
@@ -125,6 +129,10 @@ deploy-a-deux-pas/
 - Backend is deployed first when both are specified (as per requirements)
 - All deployment directories are checked for write access before deployment
 - Both DEV and PROD backends run as systemd user services (no sudo required)
-- Different ports are used: DEV (8081), PROD (8080)
+- Different ports are used: DEV (8901), PROD (8902)
 - Each environment has separate systemd service: backend-adp-dev, backend-adp-prod
 - Failed deployments are clearly reported with error messages
+- Artifacts are downloaded on the Jenkins controller (which has Nexus access) then copied to the target machine
+- All file operations use native Ansible modules (no shell commands)
+- Frontend config.json is automatically updated with the correct backend API URL for each environment
+- Apache proxy routes `/api/a-deux-pas-{env}` to the appropriate backend port

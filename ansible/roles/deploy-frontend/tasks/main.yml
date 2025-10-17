@@ -33,25 +33,26 @@
     state: directory
     mode: '0755'
 
-- name: Download frontend artifact from Nexus
+- name: Download frontend artifact from Nexus (on controller)
   get_url:
     url: "{{ nexus_url }}/repository/{{ nexus_repo }}/fr/a-deux-pas/{{ app_name }}/{{ front_app_version }}/{{ app_name }}-{{ front_app_version }}.tar.gz"
     dest: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
-    username: "{{ nexus_username }}"
-    password: "{{ nexus_password }}"
     force: yes
     mode: '0644'
+  delegate_to: localhost
   register: download_result
 
-- name: Verify artifact was downloaded
-  stat:
-    path: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
-  register: artifact_stat
+- name: Copy frontend artifact to target machine
+  copy:
+    src: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
+    dest: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
+    mode: '0644'
 
-- name: Fail if artifact was not downloaded
-  fail:
-    msg: "Failed to download artifact from Nexus"
-  when: not artifact_stat.stat.exists
+- name: Clean up artifact from controller
+  file:
+    path: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
+    state: absent
+  delegate_to: localhost
 
 - name: Extract frontend artifact
   unarchive:
