@@ -23,9 +23,15 @@
   when: write_test is succeeded
 
 - name: Clean deployment directory
-  shell: rm -rf {{ front_deploy_dir }}/*
-  args:
-    warn: false
+  file:
+    path: "{{ front_deploy_dir }}"
+    state: absent
+
+- name: Recreate deployment directory
+  file:
+    path: "{{ front_deploy_dir }}"
+    state: directory
+    mode: '0755'
 
 - name: Download frontend artifact from Nexus
   get_url:
