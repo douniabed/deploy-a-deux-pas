@@ -28,6 +28,9 @@ pipeline {
     }
 
     environment {
+        ANSIBLE_FORCE_COLOR = 'true'
+        PY_COLORS = '1'
+        ANSIBLE_NOCOLOR = '0'
         NEXUS_CREDENTIALS = credentials('nexus-credentials')
         NEXUS_USERNAME = "${env.NEXUS_CREDENTIALS_USR}"
         NEXUS_PASSWORD = "${env.NEXUS_CREDENTIALS_PSW}"
