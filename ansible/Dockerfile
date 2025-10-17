@@ -1,4 +1,6 @@
 # Use Jenkins agent with JDK 21 as base image
+# docker build -t jenkins-ansible-agent:latest .
+
 FROM jenkins/agent:latest-jdk21
 
 # Switch to root to install system packages
@@ -32,7 +34,8 @@ RUN /home/jenkins/ansible-venv/bin/pip install --no-cache-dir --upgrade pip && \
     /home/jenkins/ansible-venv/bin/pip install --no-cache-dir \
     ansible \
     paramiko \
-    jinja2
+    jinja2 \
+    lxml
 
 # Set PATH to include ansible binaries
 ENV PATH="/home/jenkins/ansible-venv/bin:${PATH}"
