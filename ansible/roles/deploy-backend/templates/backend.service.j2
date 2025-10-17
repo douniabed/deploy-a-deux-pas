@@ -1,0 +1,15 @@
+[Unit]
+Description=A Deux Pas Backend Application - {{ target_env }}
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory={{ back_deploy_dir }}
+ExecStart=/usr/bin/java {{ java_opts }} -Dspring.profiles.active={{ spring_profile }} -Dserver.port={{ back_app_port }} -jar {{ back_deploy_dir }}/{{ app_name }}.jar
+Restart=on-failure
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

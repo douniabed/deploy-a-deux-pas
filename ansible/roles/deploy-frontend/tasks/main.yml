@@ -1,0 +1,99 @@
+---
+- name: Display deployment information
+  debug:
+    msg: "Deploying {{ app_name }} version {{ front_app_version }} to {{ target_env }}"
+
+- name: Ensure deployment directory exists
+  file:
+    path: "{{ front_deploy_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Check if deployment directory is writable
+  file:
+    path: "{{ front_deploy_dir }}/.write_test"
+    state: touch
+    mode: '0644'
+  register: write_test
+
+- name: Remove write test file
+  file:
+    path: "{{ front_deploy_dir }}/.write_test"
+    state: absent
+  when: write_test is succeeded
+
+- name: Clean deployment directory
+  shell: rm -rf {{ front_deploy_dir }}/*
+  args:
+    warn: false
+
+- name: Download frontend artifact from Nexus
+  get_url:
+    url: "{{ nexus_url }}/repository/{{ nexus_repo }}/fr/a-deux-pas/{{ app_name }}/{{ front_app_version }}/{{ app_name }}-{{ front_app_version }}.tar.gz"
+    dest: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
+    username: "{{ nexus_username }}"
+    password: "{{ nexus_password }}"
+    force: yes
+    mode: '0644'
+  register: download_result
+
+- name: Verify artifact was downloaded
+  stat:
+    path: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
+  register: artifact_stat
+
+- name: Fail if artifact was not downloaded
+  fail:
+    msg: "Failed to download artifact from Nexus"
+  when: not artifact_stat.stat.exists
+
+- name: Extract frontend artifact
+  unarchive:
+    src: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
+    dest: "{{ front_deploy_dir }}"
+    remote_src: yes
+    mode: '0755'
+
+- name: Clean up downloaded artifact
+  file:
+    path: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
+    state: absent
+
+- name: Read existing config.json from deployed frontend
+  slurp:
+    src: "{{ front_deploy_dir }}/assets/config.json"
+  register: config_file
+
+- name: Update apiUrl in config.json for environment
+  copy:
+    content: "{{ config_file.content | b64decode | from_json | combine({'apiUrl': back_api_url}) | to_nice_json }}"
+    dest: "{{ front_deploy_dir }}/assets/config.json"
+    mode: '0644'
+
+- name: Wait for frontend to be accessible
+  uri:
+    url: "{{ front_version_url }}"
+    method: GET
+    status_code: 200
+    headers:
+      Cache-Control: "no-cache, no-store, must-revalidate"
+      Pragma: "no-cache"
+      Expires: "0"
+    user: "{{ http_auth_user | default(omit) }}"
+    password: "{{ http_auth_password | default(omit) }}"
+    force_basic_auth: "{{ true if http_auth_user is defined else false }}"
+  register: version_check
+  retries: 10
+  delay: 3
+  until: version_check.status == 200
+
+- name: Verify deployed version
+  assert:
+    that:
+      - version_check.json.version == front_app_version
+    fail_msg: "Deployed version {{ version_check.json.version }} does not match expected version {{ front_app_version }}"
+    success_msg: "Frontend version {{ front_app_version }} deployed successfully"
+
+- name: Display deployment success
+  debug:
+    msg: "Frontend {{ front_app_version }} deployed successfully to {{ target_env }}"

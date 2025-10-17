@@ -1,0 +1,110 @@
+---
+- name: Display deployment information
+  debug:
+    msg: "Deploying {{ app_name }} version {{ back_app_version }} to {{ target_env }}"
+
+- name: Ensure deployment directory exists
+  file:
+    path: "{{ back_deploy_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Check if deployment directory is writable
+  file:
+    path: "{{ back_deploy_dir }}/.write_test"
+    state: touch
+    mode: '0644'
+  register: write_test
+
+- name: Remove write test file
+  file:
+    path: "{{ back_deploy_dir }}/.write_test"
+    state: absent
+  when: write_test is succeeded
+
+- name: Stop existing backend application
+  systemd:
+    name: "{{ service_name }}"
+    state: stopped
+    scope: user
+  ignore_errors: yes
+
+- name: Clean deployment directory
+  shell: rm -rf {{ back_deploy_dir }}/*
+  args:
+    warn: false
+
+- name: Download backend JAR from Nexus
+  get_url:
+    url: "{{ nexus_url }}/repository/{{ nexus_repo }}/fr/a-deux-pas/{{ app_name }}/{{ back_app_version }}/{{ app_name }}-{{ back_app_version }}.jar"
+    dest: "{{ back_deploy_dir }}/{{ app_name }}.jar"
+    username: "{{ nexus_username }}"
+    password: "{{ nexus_password }}"
+    force: yes
+    mode: '0644'
+  register: download_result
+
+- name: Verify JAR file was downloaded
+  stat:
+    path: "{{ back_deploy_dir }}/{{ app_name }}.jar"
+  register: jar_stat
+
+- name: Fail if JAR file was not downloaded
+  fail:
+    msg: "Failed to download JAR file from Nexus"
+  when: not jar_stat.stat.exists
+
+- name: Copy application properties for environment
+  copy:
+    src: "/home/donia/Dev/a-deux-pas-fork/back-a-deux-pas/src/main/resources/application-{{ spring_profile }}.properties"
+    dest: "{{ back_deploy_dir }}/application-{{ spring_profile }}.properties"
+    mode: '0644'
+
+- name: Ensure user systemd directory exists
+  file:
+    path: "~/.config/systemd/user"
+    state: directory
+    mode: '0755'
+
+- name: Create systemd service file
+  template:
+    src: backend.service.j2
+    dest: "~/.config/systemd/user/{{ service_name }}.service"
+    mode: '0644'
+
+- name: Reload systemd daemon
+  systemd:
+    daemon_reload: true
+    scope: user
+
+- name: Start backend application
+  systemd:
+    name: "{{ service_name }}"
+    state: started
+    enabled: true
+    scope: user
+
+- name: Wait for backend to be ready
+  uri:
+    url: "{{ back_version_url }}"
+    method: GET
+    status_code: 200
+    headers:
+      Cache-Control: "no-cache, no-store, must-revalidate"
+      Pragma: "no-cache"
+      Expires: "0"
+  register: version_check
+  retries: 30
+  delay: 5
+  until: version_check.status == 200
+
+- name: Verify deployed version
+  assert:
+    that:
+      - version_check.json.version == back_app_version
+    fail_msg: "Deployed version {{ version_check.json.version }} does not match expected version {{ back_app_version }}"
+    success_msg: "Backend version {{ back_app_version }} deployed successfully"
+
+- name: Display deployment success
+  debug:
+    msg: "Backend {{ back_app_version }} deployed successfully to {{ target_env }}"

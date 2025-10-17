@@ -1,0 +1,20 @@
+---
+- name: Deploy A Deux Pas Applications
+  hosts: "{{ target_env | lower }}_{{ app_type }}"
+  gather_facts: yes
+
+  vars:
+    nexus_username: "{{ lookup('env', 'NEXUS_USERNAME') }}"
+    nexus_password: "{{ lookup('env', 'NEXUS_PASSWORD') }}"
+    http_auth_password: "{{ lookup('env', 'HTTP_AUTH_PASSWORD') | default(omit) }}"
+
+  tasks:
+    - name: Include backend deployment role
+      include_role:
+        name: deploy-backend
+      when: app_type == 'back'
+
+    - name: Include frontend deployment role
+      include_role:
+        name: deploy-frontend
+      when: app_type == 'front'

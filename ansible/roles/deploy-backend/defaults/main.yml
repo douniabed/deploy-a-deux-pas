@@ -1,0 +1,8 @@
+---
+# Default variables for backend deployment
+nexus_url: "http://nexus.local:8085"
+nexus_repo: "maven-adp-back"
+app_name: "back-a-deux-pas"
+java_opts: "-Xmx512m"
+spring_profile: "{{ 'prod' if target_env == 'PROD' else 'dev' }}"
+service_name: "backend-adp-{{ target_env | lower }}"
