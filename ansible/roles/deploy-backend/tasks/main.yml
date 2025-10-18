@@ -119,21 +119,7 @@
 
 - name: Display service status
   debug:
-    var: service_status
-
-- name: Get service logs
-  command: journalctl --user -u {{ service_name }} -n 50 --no-pager
-  register: service_logs
-  changed_when: false
-
-- name: Display service logs
-  debug:
-    var: service_logs.stdout_lines
-
-- name: Fail if service is not running
-  fail:
-    msg: "Backend service failed to start. Check logs above for details."
-  when: service_status.status.ActiveState != "active"
+    msg: "Service {{ service_name }} is {{ service_status.status.ActiveState }}"
 
 - name: Wait for backend to be ready
   uri:
