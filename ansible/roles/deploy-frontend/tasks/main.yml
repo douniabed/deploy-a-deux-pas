@@ -73,9 +73,9 @@
     src: "{{ front_deploy_dir }}/assets/config.json"
   register: config_file
 
-- name: Update apiUrl in config.json for environment
+- name: Update apiUrl and environmentName in config.json for environment
   copy:
-    content: "{{ config_file.content | b64decode | from_json | combine({'apiUrl': back_api_url}) | to_nice_json }}"
+    content: "{{ config_file.content | b64decode | from_json | combine({'apiUrl': back_api_url, 'environmentName': target_env | lower}) | to_nice_json }}"
     dest: "{{ front_deploy_dir }}/assets/config.json"
     mode: '0644'
 
