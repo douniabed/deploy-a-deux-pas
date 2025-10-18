@@ -88,9 +88,6 @@
       Cache-Control: "no-cache, no-store, must-revalidate"
       Pragma: "no-cache"
       Expires: "0"
-    user: "{{ http_auth_user | default(omit) }}"
-    password: "{{ http_auth_password | default(omit) }}"
-    force_basic_auth: "{{ true if http_auth_user is defined else false }}"
   register: version_check
   retries: 10
   delay: 3

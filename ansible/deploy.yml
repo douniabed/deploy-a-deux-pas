@@ -3,9 +3,6 @@
   hosts: "{{ target_env | lower }}_{{ app_type }}"
   gather_facts: yes
 
-  vars:
-    http_auth_password: "{{ lookup('env', 'HTTP_AUTH_PASSWORD') | default(omit) }}"
-
   tasks:
     - name: Include backend deployment role
       include_role:
