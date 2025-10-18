@@ -63,12 +63,6 @@
     state: absent
   delegate_to: localhost
 
-- name: Copy application properties for environment
-  copy:
-    src: "/home/donia/Dev/a-deux-pas-fork/back-a-deux-pas/src/main/resources/application-{{ spring_profile }}.properties"
-    dest: "{{ back_deploy_dir }}/application-{{ spring_profile }}.properties"
-    mode: '0644'
-
 - name: Ensure user systemd directory exists
   file:
     path: "~/.config/systemd/user"
