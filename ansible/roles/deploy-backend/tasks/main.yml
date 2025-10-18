@@ -63,6 +63,26 @@
     state: absent
   delegate_to: localhost
 
+- name: Download application properties from Nexus (on controller)
+  get_url:
+    url: "{{ nexus_url }}/repository/a-deux-pas-resources/back/application-{{ spring_profile }}.properties"
+    dest: "/tmp/application-{{ spring_profile }}.properties"
+    force: yes
+    mode: '0644'
+  delegate_to: localhost
+
+- name: Copy application properties to target machine
+  copy:
+    src: "/tmp/application-{{ spring_profile }}.properties"
+    dest: "{{ back_deploy_dir }}/application-{{ spring_profile }}.properties"
+    mode: '0644'
+
+- name: Clean up properties from controller
+  file:
+    path: "/tmp/application-{{ spring_profile }}.properties"
+    state: absent
+  delegate_to: localhost
+
 - name: Ensure user systemd directory exists
   file:
     path: "~/.config/systemd/user"
@@ -86,6 +106,34 @@
     state: started
     enabled: true
     scope: user
+
+- name: Wait for service to initialize
+  pause:
+    seconds: 10
+
+- name: Check service status
+  systemd:
+    name: "{{ service_name }}"
+    scope: user
+  register: service_status
+
+- name: Display service status
+  debug:
+    var: service_status
+
+- name: Get service logs
+  command: journalctl --user -u {{ service_name }} -n 50 --no-pager
+  register: service_logs
+  changed_when: false
+
+- name: Display service logs
+  debug:
+    var: service_logs.stdout_lines
+
+- name: Fail if service is not running
+  fail:
+    msg: "Backend service failed to start. Check logs above for details."
+  when: service_status.status.ActiveState != "active"
 
 - name: Wait for backend to be ready
   uri:
