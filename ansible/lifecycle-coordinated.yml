@@ -3,6 +3,10 @@
   hosts: "{{ target_env | lower }}_back"
   gather_facts: no
 
+  vars:
+    app_name: "back-a-deux-pas"
+    service_name: "backend-adp-{{ target_env | lower }}"
+
   tasks:
     - name: Display lifecycle operation
       debug:
