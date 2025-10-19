@@ -56,33 +56,36 @@
           register: frontend_http_check
           ignore_errors: yes
 
-        - name: Display consolidated application status
-          debug:
-            msg:
-              - "========================================"
-              - "APPLICATION STATUS - {{ target_env }} ENVIRONMENT"
-              - "========================================"
-              - ""
+        - name: Build backend status lines
+          set_fact:
+            backend_status_lines:
               - "BACKEND STATUS:"
               - "  Service: {{ service_name }}"
               - "  Active State: {{ backend_service_status.status.ActiveState if backend_service_status is succeeded else 'NOT FOUND' }}"
               - "  Sub State: {{ backend_service_status.status.SubState if backend_service_status is succeeded else 'N/A' }}"
               - "  HTTP Endpoint: {{ 'ACCESSIBLE' if backend_http_check is succeeded else 'NOT ACCESSIBLE' }}"
-              - "{% if backend_http_check is succeeded %}  Version: {{ backend_http_check.json.version }}{% endif %}"
-              - "{% if backend_http_check is succeeded %}  Build Time: {{ backend_http_check.json.buildTime }}{% endif %}"
-              - "{% if backend_http_check is succeeded %}  Branch: {{ backend_http_check.json.branch }}{% endif %}"
-              - "{% if backend_http_check is succeeded %}  Commit: {{ backend_http_check.json.commit[:8] }}{% endif %}"
-              - ""
+
+        - name: Add backend version info if accessible
+          set_fact:
+            backend_status_lines: "{{ backend_status_lines + ['  Version: ' + backend_http_check.json.version, '  Build Time: ' + backend_http_check.json.buildTime, '  Branch: ' + backend_http_check.json.branch, '  Commit: ' + backend_http_check.json.commit[:8]] }}"
+          when: backend_http_check is succeeded
+
+        - name: Build frontend status lines
+          set_fact:
+            frontend_status_lines:
               - "FRONTEND STATUS:"
               - "  State: {{ 'STOPPED' if front_index_stopped.stat.exists else 'RUNNING' if front_index.stat.exists else 'UNKNOWN' }}"
               - "  Directory: {{ front_deploy_dir }}"
               - "  HTTP Endpoint: {{ 'ACCESSIBLE' if frontend_http_check is succeeded else 'NOT ACCESSIBLE' }}"
-              - "{% if frontend_http_check is succeeded %}  Version: {{ frontend_http_check.json.version }}{% endif %}"
-              - "{% if frontend_http_check is succeeded %}  Build Time: {{ frontend_http_check.json.buildTime }}{% endif %}"
-              - "{% if frontend_http_check is succeeded %}  Branch: {{ frontend_http_check.json.branch }}{% endif %}"
-              - "{% if frontend_http_check is succeeded %}  Commit: {{ frontend_http_check.json.commit[:8] }}{% endif %}"
-              - ""
-              - "========================================"
+
+        - name: Add frontend version info if accessible
+          set_fact:
+            frontend_status_lines: "{{ frontend_status_lines + ['  Version: ' + frontend_http_check.json.version, '  Build Time: ' + frontend_http_check.json.buildTime, '  Branch: ' + frontend_http_check.json.branch, '  Commit: ' + frontend_http_check.json.commit[:8]] }}"
+          when: frontend_http_check is succeeded
+
+        - name: Display consolidated application status
+          debug:
+            msg: "{{ ['========================================', 'APPLICATION STATUS - ' + target_env + ' ENVIRONMENT', '========================================', ''] + backend_status_lines + [''] + frontend_status_lines + ['', '========================================'] }}"
 
       when: lifecycle_action == 'status'
 
@@ -244,30 +247,21 @@
           until: frontend_ready_check.status == 200
           ignore_errors: yes
 
-        - name: Display start operation summary
-          debug:
-            msg:
-              - "========================================"
-              - "START OPERATION COMPLETED - {{ target_env }}"
-              - "========================================"
-              - ""
-              - "BACKEND:"
-              - "  Service {{ service_name }}: STARTED"
-              - "  HTTP Endpoint: ACCESSIBLE"
-              - "  Version: {{ backend_ready_check.json.version }}"
-              - "  Build Time: {{ backend_ready_check.json.buildTime }}"
-              - "  Branch: {{ backend_ready_check.json.branch }}"
-              - "  Commit: {{ backend_ready_check.json.commit[:8] }}"
-              - ""
+        - name: Build start frontend status lines
+          set_fact:
+            start_frontend_lines:
               - "FRONTEND:"
               - "  Status: {{ 'RESTORED and RUNNING' if front_stopped_start.stat.exists else 'Already running' }}"
               - "  HTTP Endpoint: {{ 'ACCESSIBLE' if frontend_ready_check is succeeded else 'NOT ACCESSIBLE' }}"
-              - "{% if frontend_ready_check is succeeded %}  Version: {{ frontend_ready_check.json.version }}{% endif %}"
-              - "{% if frontend_ready_check is succeeded %}  Build Time: {{ frontend_ready_check.json.buildTime }}{% endif %}"
-              - "{% if frontend_ready_check is succeeded %}  Branch: {{ frontend_ready_check.json.branch }}{% endif %}"
-              - "{% if frontend_ready_check is succeeded %}  Commit: {{ frontend_ready_check.json.commit[:8] }}{% endif %}"
-              - ""
-              - "========================================"
+
+        - name: Add start frontend version info if accessible
+          set_fact:
+            start_frontend_lines: "{{ start_frontend_lines + ['  Version: ' + frontend_ready_check.json.version, '  Build Time: ' + frontend_ready_check.json.buildTime, '  Branch: ' + frontend_ready_check.json.branch, '  Commit: ' + frontend_ready_check.json.commit[:8]] }}"
+          when: frontend_ready_check is succeeded
+
+        - name: Display start operation summary
+          debug:
+            msg: "{{ ['========================================', 'START OPERATION COMPLETED - ' + target_env, '========================================', '', 'BACKEND:', '  Service ' + service_name + ': STARTED', '  HTTP Endpoint: ACCESSIBLE', '  Version: ' + backend_ready_check.json.version, '  Build Time: ' + backend_ready_check.json.buildTime, '  Branch: ' + backend_ready_check.json.branch, '  Commit: ' + backend_ready_check.json.commit[:8], ''] + start_frontend_lines + ['', '========================================'] }}"
 
       when: lifecycle_action == 'start'
 
@@ -405,29 +399,20 @@
           until: frontend_restart_check.status == 200
           ignore_errors: yes
 
-        - name: Display restart operation summary
-          debug:
-            msg:
-              - "========================================"
-              - "RESTART OPERATION COMPLETED - {{ target_env }}"
-              - "========================================"
-              - ""
-              - "BACKEND:"
-              - "  Service {{ service_name }}: RESTARTED"
-              - "  HTTP Endpoint: ACCESSIBLE"
-              - "  Version: {{ backend_restart_ready.json.version }}"
-              - "  Build Time: {{ backend_restart_ready.json.buildTime }}"
-              - "  Branch: {{ backend_restart_ready.json.branch }}"
-              - "  Commit: {{ backend_restart_ready.json.commit[:8] }}"
-              - ""
+        - name: Build restart frontend status lines
+          set_fact:
+            restart_frontend_lines:
               - "FRONTEND:"
               - "  Status: RESTORED and RUNNING"
               - "  HTTP Endpoint: {{ 'ACCESSIBLE' if frontend_restart_check is succeeded else 'NOT ACCESSIBLE' }}"
-              - "{% if frontend_restart_check is succeeded %}  Version: {{ frontend_restart_check.json.version }}{% endif %}"
-              - "{% if frontend_restart_check is succeeded %}  Build Time: {{ frontend_restart_check.json.buildTime }}{% endif %}"
-              - "{% if frontend_restart_check is succeeded %}  Branch: {{ frontend_restart_check.json.branch }}{% endif %}"
-              - "{% if frontend_restart_check is succeeded %}  Commit: {{ frontend_restart_check.json.commit[:8] }}{% endif %}"
-              - ""
-              - "========================================"
+
+        - name: Add restart frontend version info if accessible
+          set_fact:
+            restart_frontend_lines: "{{ restart_frontend_lines + ['  Version: ' + frontend_restart_check.json.version, '  Build Time: ' + frontend_restart_check.json.buildTime, '  Branch: ' + frontend_restart_check.json.branch, '  Commit: ' + frontend_restart_check.json.commit[:8]] }}"
+          when: frontend_restart_check is succeeded
+
+        - name: Display restart operation summary
+          debug:
+            msg: "{{ ['========================================', 'RESTART OPERATION COMPLETED - ' + target_env, '========================================', '', 'BACKEND:', '  Service ' + service_name + ': RESTARTED', '  HTTP Endpoint: ACCESSIBLE', '  Version: ' + backend_restart_ready.json.version, '  Build Time: ' + backend_restart_ready.json.buildTime, '  Branch: ' + backend_restart_ready.json.branch, '  Commit: ' + backend_restart_ready.json.commit[:8], ''] + restart_frontend_lines + ['', '========================================'] }}"
 
       when: lifecycle_action == 'restart'
