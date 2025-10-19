@@ -1,0 +1,88 @@
+pipeline {
+    agent {
+        label 'ansible'
+    }
+
+    parameters {
+        choice(
+            name: 'ACTION',
+            choices: ['status', 'stop', 'start', 'restart'],
+            description: 'Action to perform (manages both front and back as coordinated application)'
+        )
+        choice(
+            name: 'TARGET_ENV',
+            choices: ['DEV', 'PROD'],
+            description: 'Target environment'
+        )
+    }
+
+    options {
+        ansiColor('xterm')
+        buildDiscarder(logRotator(numToKeepStr: '10'))
+        timestamps()
+    }
+
+    environment {
+        ANSIBLE_FORCE_COLOR = 'true'
+        PY_COLORS = '1'
+        ANSIBLE_NOCOLOR = '0'
+    }
+
+    stages {
+        stage('Validate Parameters') {
+            steps {
+                script {
+                    echo "=== Application Lifecycle Management ==="
+                    echo "Action: ${params.ACTION}"
+                    echo "Environment: ${params.TARGET_ENV}"
+                    echo "Managing: Backend + Frontend (coordinated)"
+                    echo "========================================"
+
+                    // Set build display name
+                    currentBuild.displayName = "#${env.BUILD_NUMBER} - ${params.ACTION.toUpperCase()} (${params.TARGET_ENV})"
+                }
+            }
+        }
+
+        stage('Prepare Environment') {
+            steps {
+                script {
+                    // Get SSH password for magnolia host
+                    withCredentials([string(credentialsId: 'magnolia-ssh-password', variable: 'SSH_PASS')]) {
+                        env.SSH_PASSWORD = SSH_PASS
+                    }
+                }
+            }
+        }
+
+        stage('Execute Lifecycle Action') {
+            steps {
+                script {
+                    echo "=== ${params.ACTION.toUpperCase()} Application in ${params.TARGET_ENV} ==="
+
+                    sh """
+                        cd ansible
+                        ansible-playbook -i inventory.ini lifecycle-coordinated.yml \
+                            -e "target_env=${params.TARGET_ENV}" \
+                            -e "lifecycle_action=${params.ACTION}" \
+                            -v
+                    """
+
+                    echo "Application ${params.ACTION} operation completed successfully"
+                }
+            }
+        }
+    }
+
+    post {
+        always {
+            echo '=== Lifecycle Management Completed ==='
+        }
+        success {
+            echo "SUCCESS: ${params.ACTION} operation completed for Backend + Frontend in ${params.TARGET_ENV} environment"
+        }
+        failure {
+            echo "FAILURE: ${params.ACTION} operation failed. Check logs above for details."
+        }
+    }
+}

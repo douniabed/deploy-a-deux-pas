@@ -1,0 +1,420 @@
+---
+- name: Coordinated Application Lifecycle Management
+  hosts: "{{ target_env | lower }}_back"
+  gather_facts: no
+
+  tasks:
+    - name: Display lifecycle operation
+      debug:
+        msg: "=== {{ lifecycle_action | upper }} operation for {{ target_env }} environment (Backend + Frontend) ==="
+
+    # ========================================
+    # STATUS ACTION - Check both apps
+    # ========================================
+    - name: Check Backend Status
+      block:
+        - name: Get backend service status
+          systemd:
+            name: "{{ service_name }}"
+            scope: user
+          register: backend_service_status
+          ignore_errors: yes
+
+        - name: Display backend service status
+          debug:
+            msg: |
+              === BACKEND STATUS ===
+              Service: {{ service_name }}
+              Active State: {{ backend_service_status.status.ActiveState if backend_service_status is succeeded else 'NOT FOUND' }}
+              Sub State: {{ backend_service_status.status.SubState if backend_service_status is succeeded else 'N/A' }}
+
+        - name: Check backend HTTP endpoint
+          uri:
+            url: "{{ back_version_url }}"
+            method: GET
+            status_code: 200
+            headers:
+              Cache-Control: "no-cache, no-store, must-revalidate"
+          register: backend_http_check
+          ignore_errors: yes
+
+        - name: Display backend HTTP status
+          debug:
+            msg: |
+              Backend HTTP: {{ 'ACCESSIBLE' if backend_http_check is succeeded else 'NOT ACCESSIBLE' }}
+              {% if backend_http_check is succeeded %}
+              Version JSON: {{ backend_http_check.json | to_nice_json }}
+              {% endif %}
+
+        - name: Check frontend index.html state
+          stat:
+            path: "{{ front_deploy_dir }}/index.html"
+          register: front_index
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Check frontend stopped state
+          stat:
+            path: "{{ front_deploy_dir }}/index.html.active"
+          register: front_index_stopped
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Display frontend status
+          debug:
+            msg: |
+              === FRONTEND STATUS ===
+              State: {{ 'STOPPED (index.html.active exists)' if front_index_stopped.stat.exists else 'RUNNING' if front_index.stat.exists else 'UNKNOWN' }}
+              Directory: {{ front_deploy_dir }}
+
+        - name: Check frontend HTTP endpoint
+          uri:
+            url: "{{ front_version_url }}"
+            method: GET
+            status_code: 200
+            headers:
+              Cache-Control: "no-cache, no-store, must-revalidate"
+          register: frontend_http_check
+          ignore_errors: yes
+
+        - name: Display frontend HTTP status
+          debug:
+            msg: |
+              Frontend HTTP: {{ 'ACCESSIBLE' if frontend_http_check is succeeded else 'NOT ACCESSIBLE' }}
+              {% if frontend_http_check is succeeded %}
+              Version JSON: {{ frontend_http_check.json | to_nice_json }}
+              {% endif %}
+
+      when: lifecycle_action == 'status'
+
+    # ========================================
+    # STOP ACTION - Stop backend, hide frontend
+    # ========================================
+    - name: Stop Application
+      block:
+        - name: Display stop operation
+          debug:
+            msg: "Stopping backend service and hiding frontend..."
+
+        - name: Stop backend service
+          systemd:
+            name: "{{ service_name }}"
+            state: stopped
+            scope: user
+          register: backend_stop_result
+
+        - name: Display backend stop result
+          debug:
+            msg: "Backend service {{ service_name }} stopped successfully"
+          when: backend_stop_result is succeeded
+
+        - name: Check if frontend is running
+          stat:
+            path: "{{ front_deploy_dir }}/index.html"
+          register: front_active
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Check if frontend already stopped
+          stat:
+            path: "{{ front_deploy_dir }}/index.html.active"
+          register: front_stopped
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Rename frontend index.html to index.html.active
+          command: mv "{{ front_deploy_dir }}/index.html" "{{ front_deploy_dir }}/index.html.active"
+          when: front_active.stat.exists and not front_stopped.stat.exists
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Create stopped page for frontend
+          copy:
+            dest: "{{ front_deploy_dir }}/index.html"
+            content: |
+              <!DOCTYPE html>
+              <html lang="en">
+              <head>
+                  <meta charset="UTF-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <title>Application Stopped - {{ target_env }}</title>
+                  <style>
+                      body {
+                          font-family: Arial, sans-serif;
+                          display: flex;
+                          justify-content: center;
+                          align-items: center;
+                          height: 100vh;
+                          margin: 0;
+                          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                          color: white;
+                      }
+                      .container {
+                          text-align: center;
+                          padding: 40px;
+                          background: rgba(0, 0, 0, 0.3);
+                          border-radius: 10px;
+                          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                      }
+                      h1 { font-size: 3em; margin: 0 0 20px 0; }
+                      p { font-size: 1.2em; margin: 10px 0; }
+                      .env { font-weight: bold; color: #ffd700; }
+                  </style>
+              </head>
+              <body>
+                  <div class="container">
+                      <h1>⏸️ Application Stopped</h1>
+                      <p>The <span class="env">{{ target_env }}</span> environment is currently stopped.</p>
+                      <p>Please contact the administrator to start the application.</p>
+                  </div>
+              </body>
+              </html>
+            mode: '0644'
+          when: front_active.stat.exists and not front_stopped.stat.exists
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Display frontend stop result
+          debug:
+            msg: "Frontend stopped - index.html replaced with maintenance page"
+          when: front_active.stat.exists and not front_stopped.stat.exists
+
+      when: lifecycle_action == 'stop'
+
+    # ========================================
+    # START ACTION - Start backend, wait, restore frontend
+    # ========================================
+    - name: Start Application
+      block:
+        - name: Display start operation
+          debug:
+            msg: "Starting backend service first, then restoring frontend..."
+
+        - name: Start backend service
+          systemd:
+            name: "{{ service_name }}"
+            state: started
+            scope: user
+          register: backend_start_result
+
+        - name: Wait for backend to initialize
+          pause:
+            seconds: 10
+
+        - name: Wait for backend to be ready
+          uri:
+            url: "{{ back_version_url }}"
+            method: GET
+            status_code: 200
+            headers:
+              Cache-Control: "no-cache, no-store, must-revalidate"
+          register: backend_ready_check
+          retries: 30
+          delay: 5
+          until: backend_ready_check.status == 200
+
+        - name: Display backend is ready
+          debug:
+            msg: |
+              Backend started successfully!
+              Version JSON: {{ backend_ready_check.json | to_nice_json }}
+
+        - name: Check if frontend is stopped
+          stat:
+            path: "{{ front_deploy_dir }}/index.html.active"
+          register: front_stopped_start
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Remove stopped page
+          file:
+            path: "{{ front_deploy_dir }}/index.html"
+            state: absent
+          when: front_stopped_start.stat.exists
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Restore frontend index.html
+          command: mv "{{ front_deploy_dir }}/index.html.active" "{{ front_deploy_dir }}/index.html"
+          when: front_stopped_start.stat.exists
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Display frontend restore result
+          debug:
+            msg: "Frontend restored - application is now fully accessible"
+          when: front_stopped_start.stat.exists
+
+        - name: Wait for frontend to be accessible
+          uri:
+            url: "{{ front_version_url }}"
+            method: GET
+            status_code: 200
+            headers:
+              Cache-Control: "no-cache, no-store, must-revalidate"
+          register: frontend_ready_check
+          retries: 5
+          delay: 2
+          until: frontend_ready_check.status == 200
+          ignore_errors: yes
+
+        - name: Display frontend version
+          debug:
+            msg: |
+              Frontend is accessible!
+              Version JSON: {{ frontend_ready_check.json | to_nice_json }}
+          when: frontend_ready_check is succeeded
+
+      when: lifecycle_action == 'start'
+
+    # ========================================
+    # RESTART ACTION - Hide frontend, restart backend, restore frontend
+    # ========================================
+    - name: Restart Application
+      block:
+        - name: Display restart operation
+          debug:
+            msg: "Restarting: hiding frontend, restarting backend, then restoring frontend..."
+
+        # Hide frontend first
+        - name: Check if frontend is running
+          stat:
+            path: "{{ front_deploy_dir }}/index.html"
+          register: front_active_restart
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Check if frontend already stopped
+          stat:
+            path: "{{ front_deploy_dir }}/index.html.active"
+          register: front_stopped_restart
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Rename frontend index.html to index.html.active
+          command: mv "{{ front_deploy_dir }}/index.html" "{{ front_deploy_dir }}/index.html.active"
+          when: front_active_restart.stat.exists and not front_stopped_restart.stat.exists
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Create stopped page during restart
+          copy:
+            dest: "{{ front_deploy_dir }}/index.html"
+            content: |
+              <!DOCTYPE html>
+              <html lang="en">
+              <head>
+                  <meta charset="UTF-8">
+                  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+                  <title>Application Restarting - {{ target_env }}</title>
+                  <style>
+                      body {
+                          font-family: Arial, sans-serif;
+                          display: flex;
+                          justify-content: center;
+                          align-items: center;
+                          height: 100vh;
+                          margin: 0;
+                          background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+                          color: white;
+                      }
+                      .container {
+                          text-align: center;
+                          padding: 40px;
+                          background: rgba(0, 0, 0, 0.3);
+                          border-radius: 10px;
+                          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+                      }
+                      h1 { font-size: 3em; margin: 0 0 20px 0; }
+                      p { font-size: 1.2em; margin: 10px 0; }
+                      .env { font-weight: bold; color: #ffd700; }
+                      .spinner {
+                          border: 4px solid rgba(255,255,255,0.3);
+                          border-radius: 50%;
+                          border-top: 4px solid white;
+                          width: 40px;
+                          height: 40px;
+                          animation: spin 1s linear infinite;
+                          margin: 20px auto;
+                      }
+                      @keyframes spin {
+                          0% { transform: rotate(0deg); }
+                          100% { transform: rotate(360deg); }
+                      }
+                  </style>
+              </head>
+              <body>
+                  <div class="container">
+                      <h1>🔄 Application Restarting</h1>
+                      <div class="spinner"></div>
+                      <p>The <span class="env">{{ target_env }}</span> environment is restarting.</p>
+                      <p>Please wait a moment...</p>
+                  </div>
+              </body>
+              </html>
+            mode: '0644'
+          when: front_active_restart.stat.exists and not front_stopped_restart.stat.exists
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Display frontend hidden
+          debug:
+            msg: "Frontend hidden with restart page"
+
+        # Restart backend
+        - name: Restart backend service
+          systemd:
+            name: "{{ service_name }}"
+            state: restarted
+            scope: user
+          register: backend_restart_result
+
+        - name: Wait for backend to initialize
+          pause:
+            seconds: 10
+
+        - name: Wait for backend to be ready
+          uri:
+            url: "{{ back_version_url }}"
+            method: GET
+            status_code: 200
+            headers:
+              Cache-Control: "no-cache, no-store, must-revalidate"
+          register: backend_restart_ready
+          retries: 30
+          delay: 5
+          until: backend_restart_ready.status == 200
+
+        - name: Display backend is ready
+          debug:
+            msg: |
+              Backend restarted successfully!
+              Version JSON: {{ backend_restart_ready.json | to_nice_json }}
+
+        # Restore frontend
+        - name: Remove restart page
+          file:
+            path: "{{ front_deploy_dir }}/index.html"
+            state: absent
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Restore frontend index.html
+          command: mv "{{ front_deploy_dir }}/index.html.active" "{{ front_deploy_dir }}/index.html"
+          delegate_to: "{{ groups[target_env | lower + '_front'][0] }}"
+
+        - name: Display frontend restored
+          debug:
+            msg: "Frontend restored - application is now fully accessible"
+
+        - name: Wait for frontend to be accessible
+          uri:
+            url: "{{ front_version_url }}"
+            method: GET
+            status_code: 200
+            headers:
+              Cache-Control: "no-cache, no-store, must-revalidate"
+          register: frontend_restart_check
+          retries: 5
+          delay: 2
+          until: frontend_restart_check.status == 200
+          ignore_errors: yes
+
+        - name: Display frontend version
+          debug:
+            msg: |
+              Frontend is accessible!
+              Version JSON: {{ frontend_restart_check.json | to_nice_json }}
+          when: frontend_restart_check is succeeded
+
+      when: lifecycle_action == 'restart'
+
+    - name: Operation completed
+      debug:
+        msg: "=== {{ lifecycle_action | upper }} operation completed successfully ==="

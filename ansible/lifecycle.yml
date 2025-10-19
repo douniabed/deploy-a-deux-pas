@@ -1,0 +1,15 @@
+---
+- name: Manage Application Lifecycle
+  hosts: "{{ target_env | lower }}_{{ app_type }}"
+  gather_facts: no
+
+  tasks:
+    - name: Display lifecycle operation
+      debug:
+        msg: "Performing {{ lifecycle_action }} on {{ app_type }} in {{ target_env }} environment"
+
+    - name: Execute lifecycle action
+      include_role:
+        name: "manage-{{ app_type }}"
+      vars:
+        action: "{{ lifecycle_action }}"
