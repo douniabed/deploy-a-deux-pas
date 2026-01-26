@@ -4,6 +4,11 @@ pipeline {
     }
 
     parameters {
+        choice(
+            name: 'TARGET_ENV',
+            choices: ['DEV', 'PROD', 'DOCKER_COMPOSE'],
+            description: 'Target environment: DEV/PROD (Ansible VM deployment) or DOCKER_COMPOSE (local container deployment)'
+        )
         string(
             name: 'BACK_APP_VERSION',
             defaultValue: '',
@@ -13,11 +18,6 @@ pipeline {
             name: 'FRONT_APP_VERSION',
             defaultValue: '',
             description: 'Frontend version to deploy (leave empty to skip frontend deployment)'
-        )
-        choice(
-            name: 'TARGET_ENV',
-            choices: ['DEV', 'PROD'],
-            description: 'Target environment for deployment'
         )
     }
 
@@ -31,6 +31,8 @@ pipeline {
         ANSIBLE_FORCE_COLOR = 'true'
         PY_COLORS = '1'
         ANSIBLE_NOCOLOR = '0'
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
+        MYSQL_CREDENTIALS = credentials('mysql-credentials')
     }
 
     stages {
@@ -81,7 +83,10 @@ pipeline {
 
         stage('Deploy Backend') {
             when {
-                expression { env.DEPLOY_BACKEND == 'true' }
+                allOf {
+                    expression { params.TARGET_ENV in ['DEV', 'PROD'] }
+                    expression { env.DEPLOY_BACKEND == 'true' }
+                }
             }
             steps {
                 script {
@@ -103,7 +108,10 @@ pipeline {
 
         stage('Deploy Frontend') {
             when {
-                expression { env.DEPLOY_FRONTEND == 'true' }
+                allOf {
+                    expression { params.TARGET_ENV in ['DEV', 'PROD'] }
+                    expression { env.DEPLOY_FRONTEND == 'true' }
+                }
             }
             steps {
                 script {
@@ -119,6 +127,79 @@ pipeline {
                     """
 
                     echo "Frontend deployment completed successfully"
+                }
+            }
+        }
+
+        stage('Deploy Docker Compose') {
+            agent {
+                label 'docker'
+            }
+            when {
+                expression { params.TARGET_ENV == 'DOCKER_COMPOSE' }
+            }
+            steps {
+                script {
+                    echo "=== Deploying with Docker Compose ==="
+
+                    // Set ports and profile for local Docker deployment
+                    // Using non-default ports to avoid conflicts with ng serve (4200) and Spring Boot (8080/8081)
+                    def backPort = '9081'
+                    def frontPort = '3000'
+                    def springProfile = 'dev'
+
+                    // Set versions (use latest if not specified)
+                    def backVersion = params.BACK_APP_VERSION ?: 'latest'
+                    def frontVersion = params.FRONT_APP_VERSION ?: 'latest'
+
+                    // Login to DockerHub to pull images
+                    sh """
+                        echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin
+                    """
+
+                    // Deploy with docker-compose
+                    sh """
+                        cd docker
+                        BACK_VERSION=${backVersion} \\
+                        FRONT_VERSION=${frontVersion} \\
+                        BACK_PORT=${backPort} \\
+                        FRONT_PORT=${frontPort} \\
+                        SPRING_PROFILE=${springProfile} \\
+                        MYSQL_USER=${MYSQL_CREDENTIALS_USR} \\
+                        MYSQL_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
+                        MYSQL_ROOT_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
+                        docker compose pull
+
+                        BACK_VERSION=${backVersion} \\
+                        FRONT_VERSION=${frontVersion} \\
+                        BACK_PORT=${backPort} \\
+                        FRONT_PORT=${frontPort} \\
+                        SPRING_PROFILE=${springProfile} \\
+                        MYSQL_USER=${MYSQL_CREDENTIALS_USR} \\
+                        MYSQL_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
+                        MYSQL_ROOT_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
+                        docker compose up -d
+                    """
+
+                    sh "docker logout"
+
+                    // Show deployment status
+                    sh """
+                        cd docker
+                        echo "=== Docker Compose Status ==="
+                        docker compose ps
+                        echo "=== Container Logs (last 20 lines) ==="
+                        docker compose logs --tail=20
+                    """
+
+                    echo "============================================"
+                    echo "Docker Compose deployment completed successfully"
+                    echo "============================================"
+                    echo "Application URLs:"
+                    echo "  Frontend: http://localhost:${frontPort}"
+                    echo "  Backend:  http://localhost:${backPort}"
+                    echo "  Backend API: http://localhost:${frontPort}/api"
+                    echo "============================================"
                 }
             }
         }
