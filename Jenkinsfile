@@ -174,7 +174,7 @@ pipeline {
                         MYSQL_USER=${MYSQL_CREDENTIALS_USR} \\
                         MYSQL_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
                         MYSQL_ROOT_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
-                        docker compose pull
+                        docker-compose pull
 
                         BACK_VERSION=${backVersion} \\
                         FRONT_VERSION=${frontVersion} \\
@@ -184,7 +184,7 @@ pipeline {
                         MYSQL_USER=${MYSQL_CREDENTIALS_USR} \\
                         MYSQL_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
                         MYSQL_ROOT_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
-                        docker compose up -d
+                        docker-compose up -d
                     """
 
                     sh "docker logout"
@@ -193,9 +193,9 @@ pipeline {
                     sh """
                         cd docker
                         echo "=== Docker Compose Status ==="
-                        docker compose ps
+                        docker-compose ps
                         echo "=== Container Logs (last 20 lines) ==="
-                        docker compose logs --tail=20
+                        docker-compose logs --tail=20
                     """
 
                     echo "============================================"
