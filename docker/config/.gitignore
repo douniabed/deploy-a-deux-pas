@@ -1,2 +1,0 @@
-# Keep application-docker.properties (contains only placeholders, secrets come from env vars)
-# Other properties files may contain secrets and should not be committed
