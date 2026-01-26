@@ -155,10 +155,19 @@ pipeline {
                     def frontPort = '3000'
                     def mysqlPort = '3307'
                     def springProfile = 'dev'
+                    def nexusUrl = 'http://nexus.local:8085'
 
                     // Set versions (use latest if not specified)
                     def backVersion = params.BACK_APP_VERSION ?: 'latest'
                     def frontVersion = params.FRONT_APP_VERSION ?: 'latest'
+
+                    // Download application properties from Nexus
+                    sh """
+                        mkdir -p docker/config
+                        curl -f -o docker/config/application-${springProfile}.properties \\
+                            ${nexusUrl}/repository/a-deux-pas-resources/back/application-${springProfile}.properties
+                        echo "Downloaded application-${springProfile}.properties from Nexus"
+                    """
 
                     // Login to DockerHub to pull images
                     sh """
@@ -177,7 +186,6 @@ pipeline {
                         MYSQL_USER=${MYSQL_CREDENTIALS_USR} \\
                         MYSQL_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
                         MYSQL_ROOT_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
-                        JWT_SECRET=${JWT_SECRET} \\
                         docker-compose pull
 
                         BACK_VERSION=${backVersion} \\
@@ -189,7 +197,6 @@ pipeline {
                         MYSQL_USER=${MYSQL_CREDENTIALS_USR} \\
                         MYSQL_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
                         MYSQL_ROOT_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
-                        JWT_SECRET=${JWT_SECRET} \\
                         docker-compose up -d
                     """
 

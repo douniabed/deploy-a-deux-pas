@@ -1,0 +1,2 @@
+# Properties files are downloaded from Nexus during deployment
+*.properties
