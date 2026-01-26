@@ -41,12 +41,13 @@ pipeline {
                 script {
                     echo "=== Deployment Configuration ==="
                     echo "Target Environment: ${params.TARGET_ENV}"
-                    echo "Backend Version: ${params.BACK_APP_VERSION ?: 'SKIP'}"
-                    echo "Frontend Version: ${params.FRONT_APP_VERSION ?: 'SKIP'}"
+                    echo "Backend Version: ${params.BACK_APP_VERSION ?: 'latest'}"
+                    echo "Frontend Version: ${params.FRONT_APP_VERSION ?: 'latest'}"
                     echo "================================"
 
-                    if (!params.BACK_APP_VERSION && !params.FRONT_APP_VERSION) {
-                        error("At least one version (BACK_APP_VERSION or FRONT_APP_VERSION) must be specified")
+                    // Versions required for Ansible deployments, optional for Docker Compose (defaults to latest)
+                    if (params.TARGET_ENV in ['DEV', 'PROD'] && !params.BACK_APP_VERSION && !params.FRONT_APP_VERSION) {
+                        error("At least one version (BACK_APP_VERSION or FRONT_APP_VERSION) must be specified for ${params.TARGET_ENV} deployment")
                     }
 
                     // Set deployment flags
@@ -55,11 +56,16 @@ pipeline {
 
                     // Set build display name with versions
                     def buildName = "${params.TARGET_ENV}:"
-                    if (params.BACK_APP_VERSION) {
-                        buildName += " Back ${params.BACK_APP_VERSION}"
-                    }
-                    if (params.FRONT_APP_VERSION) {
-                        buildName += " Front ${params.FRONT_APP_VERSION}"
+                    if (params.TARGET_ENV == 'DOCKER_COMPOSE') {
+                        buildName += " Back ${params.BACK_APP_VERSION ?: 'latest'}"
+                        buildName += " Front ${params.FRONT_APP_VERSION ?: 'latest'}"
+                    } else {
+                        if (params.BACK_APP_VERSION) {
+                            buildName += " Back ${params.BACK_APP_VERSION}"
+                        }
+                        if (params.FRONT_APP_VERSION) {
+                            buildName += " Front ${params.FRONT_APP_VERSION}"
+                        }
                     }
                     currentBuild.displayName = "#${env.BUILD_NUMBER} - ${buildName}"
                 }
