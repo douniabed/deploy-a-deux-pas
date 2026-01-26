@@ -149,9 +149,10 @@ pipeline {
                     echo "=== Deploying with Docker Compose ==="
 
                     // Set ports and profile for local Docker deployment
-                    // Using non-default ports to avoid conflicts with ng serve (4200) and Spring Boot (8080/8081)
+                    // Using non-default ports to avoid conflicts with ng serve (4200), Spring Boot (8080/8081), and MySQL (3306)
                     def backPort = '9081'
                     def frontPort = '3000'
+                    def mysqlPort = '3307'
                     def springProfile = 'dev'
 
                     // Set versions (use latest if not specified)
@@ -170,6 +171,7 @@ pipeline {
                         FRONT_VERSION=${frontVersion} \\
                         BACK_PORT=${backPort} \\
                         FRONT_PORT=${frontPort} \\
+                        MYSQL_PORT=${mysqlPort} \\
                         SPRING_PROFILE=${springProfile} \\
                         MYSQL_USER=${MYSQL_CREDENTIALS_USR} \\
                         MYSQL_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
@@ -180,6 +182,7 @@ pipeline {
                         FRONT_VERSION=${frontVersion} \\
                         BACK_PORT=${backPort} \\
                         FRONT_PORT=${frontPort} \\
+                        MYSQL_PORT=${mysqlPort} \\
                         SPRING_PROFILE=${springProfile} \\
                         MYSQL_USER=${MYSQL_CREDENTIALS_USR} \\
                         MYSQL_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
@@ -202,9 +205,10 @@ pipeline {
                     echo "Docker Compose deployment completed successfully"
                     echo "============================================"
                     echo "Application URLs:"
-                    echo "  Frontend: http://localhost:${frontPort}"
-                    echo "  Backend:  http://localhost:${backPort}"
+                    echo "  Frontend:    http://localhost:${frontPort}"
+                    echo "  Backend:     http://localhost:${backPort}"
                     echo "  Backend API: http://localhost:${frontPort}/api"
+                    echo "  MySQL:       jdbc:mysql://localhost:${mysqlPort}/adeuxpas"
                     echo "============================================"
                 }
             }
