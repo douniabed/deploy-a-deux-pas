@@ -3,10 +3,10 @@ services:
     image: mysql:8
     container_name: adeuxpas-mysql
     environment:
-      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-      MYSQL_DATABASE: ${MYSQL_DATABASE:-adeuxpas}
-      MYSQL_USER: ${MYSQL_USER}
-      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_CREDENTIALS_PSW}
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-adeuxpas-db}
+      MYSQL_USER: ${MYSQL_CREDENTIALS_USR}
+      MYSQL_PASSWORD: ${MYSQL_CREDENTIALS_PSW}
     volumes:
       - mysql_data:/var/lib/mysql
     ports:
@@ -24,14 +24,32 @@ services:
     ports:
       - "${BACK_PORT:-8081}:8081"
     environment:
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-dev}
-      # Override datasource to use docker network MySQL
-      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/${MYSQL_DATABASE:-adeuxpas}?createDatabaseIfNotExist=true&useSSL=false&serverTimezone=Europe/Paris&allowPublicKeyRetrieval=true
-      SPRING_DATASOURCE_USERNAME: ${MYSQL_USER}
-      SPRING_DATASOURCE_PASSWORD: ${MYSQL_PASSWORD}
+      # Spring profile (loads application-docker.properties)
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-docker}
+
+      # Secrets only - non-secrets are hardcoded in application-docker.properties
+      # These env vars are resolved by Spring Boot ${VAR} placeholders
+
+      # Jenkins credential: mysql-credentials (provides MYSQL_CREDENTIALS_USR/PSW)
+      MYSQL_USER: ${MYSQL_CREDENTIALS_USR}
+      MYSQL_PASSWORD: ${MYSQL_CREDENTIALS_PSW}
+
+      # Jenkins credential: jwt-secret
+      JWT_SECRET: ${JWT_SECRET}
+
+      # Jenkins credentials: cloudinary-api-key, cloudinary-api-secret
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+
+      # Jenkins credentials: stripe-api-key, stripe-webhook-secret
+      STRIPE_API_KEY: ${STRIPE_API_KEY}
+      STRIPE_WEBHOOK_SECRET: ${STRIPE_WEBHOOK_SECRET}
+
+      # Jenkins credential: mapbox-token
+      MAPBOX_ACCESS_TOKEN: ${MAPBOX_ACCESS_TOKEN}
     volumes:
-      # Properties file downloaded from Nexus (contains all env-specific config)
-      - ./config/application-${SPRING_PROFILE:-dev}.properties:/app/application-${SPRING_PROFILE:-dev}.properties:ro
+      # Properties file (non-secrets hardcoded, secrets use ${VAR} placeholders)
+      - ./config/application-${SPRING_PROFILE:-docker}.properties:/app/application-${SPRING_PROFILE:-docker}.properties:ro
     depends_on:
       mysql:
         condition: service_healthy

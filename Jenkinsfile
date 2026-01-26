@@ -34,6 +34,11 @@ pipeline {
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
         MYSQL_CREDENTIALS = credentials('mysql-credentials')
         JWT_SECRET = credentials('jwt-secret')
+        CLOUDINARY_API_KEY = credentials('cloudinary-api-key')
+        CLOUDINARY_API_SECRET = credentials('cloudinary-api-secret')
+        STRIPE_API_KEY = credentials('stripe-api-key')
+        STRIPE_WEBHOOK_SECRET = credentials('stripe-webhook-secret')
+        MAPBOX_ACCESS_TOKEN = credentials('mapbox-token')
     }
 
     stages {
@@ -149,25 +154,15 @@ pipeline {
                 script {
                     echo "=== Deploying with Docker Compose ==="
 
-                    // Set ports and profile for local Docker deployment
+                    // Set ports for local Docker deployment
                     // Using non-default ports to avoid conflicts with ng serve (4200), Spring Boot (8080/8081), and MySQL (3306)
                     def backPort = '9081'
                     def frontPort = '3000'
                     def mysqlPort = '3307'
-                    def springProfile = 'dev'
-                    def nexusUrl = 'http://nexus.local:8085'
 
                     // Set versions (use latest if not specified)
                     def backVersion = params.BACK_APP_VERSION ?: 'latest'
                     def frontVersion = params.FRONT_APP_VERSION ?: 'latest'
-
-                    // Download application properties from Nexus
-                    sh """
-                        mkdir -p docker/config
-                        curl -f -o docker/config/application-${springProfile}.properties \\
-                            ${nexusUrl}/repository/a-deux-pas-resources/back/application-${springProfile}.properties
-                        echo "Downloaded application-${springProfile}.properties from Nexus"
-                    """
 
                     // Login to DockerHub to pull images
                     sh """
@@ -175,28 +170,28 @@ pipeline {
                     """
 
                     // Deploy with docker-compose
+                    // All env vars provided by Jenkins (credentials + parameters)
+                    // No .env file needed - docker-compose reads from shell environment
                     sh """
                         cd docker
-                        BACK_VERSION=${backVersion} \\
-                        FRONT_VERSION=${frontVersion} \\
-                        BACK_PORT=${backPort} \\
-                        FRONT_PORT=${frontPort} \\
-                        MYSQL_PORT=${mysqlPort} \\
-                        SPRING_PROFILE=${springProfile} \\
-                        MYSQL_USER=${MYSQL_CREDENTIALS_USR} \\
-                        MYSQL_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
-                        MYSQL_ROOT_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
-                        docker-compose pull
 
-                        BACK_VERSION=${backVersion} \\
-                        FRONT_VERSION=${frontVersion} \\
-                        BACK_PORT=${backPort} \\
-                        FRONT_PORT=${frontPort} \\
-                        MYSQL_PORT=${mysqlPort} \\
-                        SPRING_PROFILE=${springProfile} \\
-                        MYSQL_USER=${MYSQL_CREDENTIALS_USR} \\
-                        MYSQL_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
-                        MYSQL_ROOT_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
+                        # Versions and ports from Jenkins parameters
+                        export BACK_VERSION=${backVersion}
+                        export FRONT_VERSION=${frontVersion}
+                        export BACK_PORT=${backPort}
+                        export FRONT_PORT=${frontPort}
+                        export MYSQL_PORT=${mysqlPort}
+
+                        # Non-secrets
+                        export SPRING_PROFILE=docker
+                        export MYSQL_DATABASE=adeuxpas-db
+
+                        # Secrets are already in env from Jenkins credentials block:
+                        # MYSQL_CREDENTIALS_USR, MYSQL_CREDENTIALS_PSW, JWT_SECRET,
+                        # CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, STRIPE_API_KEY,
+                        # STRIPE_WEBHOOK_SECRET, MAPBOX_ACCESS_TOKEN
+
+                        docker-compose pull
                         docker-compose up -d
                     """
 
@@ -218,7 +213,7 @@ pipeline {
                     echo "  Frontend:    http://localhost:${frontPort}"
                     echo "  Backend:     http://localhost:${backPort}"
                     echo "  Backend API: http://localhost:${frontPort}/api"
-                    echo "  MySQL:       jdbc:mysql://localhost:${mysqlPort}/adeuxpas"
+                    echo "  MySQL:       jdbc:mysql://localhost:${mysqlPort}/adeuxpas-db"
                     echo "============================================"
                 }
             }
