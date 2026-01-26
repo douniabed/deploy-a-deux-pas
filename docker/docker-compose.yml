@@ -26,6 +26,8 @@ services:
     environment:
       # Spring profile (loads application-docker.properties)
       SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-docker}
+      # Explicitly tell Spring to load external config from /app/config/
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/config/
 
       # Secrets only - non-secrets are hardcoded in application-docker.properties
       # These env vars are resolved by Spring Boot ${VAR} placeholders
