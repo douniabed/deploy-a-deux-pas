@@ -33,6 +33,7 @@ pipeline {
         ANSIBLE_NOCOLOR = '0'
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
         MYSQL_CREDENTIALS = credentials('mysql-credentials')
+        JWT_SECRET = credentials('jwt-secret')
     }
 
     stages {
@@ -176,6 +177,7 @@ pipeline {
                         MYSQL_USER=${MYSQL_CREDENTIALS_USR} \\
                         MYSQL_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
                         MYSQL_ROOT_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
+                        JWT_SECRET=${JWT_SECRET} \\
                         docker-compose pull
 
                         BACK_VERSION=${backVersion} \\
@@ -187,6 +189,7 @@ pipeline {
                         MYSQL_USER=${MYSQL_CREDENTIALS_USR} \\
                         MYSQL_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
                         MYSQL_ROOT_PASSWORD=${MYSQL_CREDENTIALS_PSW} \\
+                        JWT_SECRET=${JWT_SECRET} \\
                         docker-compose up -d
                     """
 
