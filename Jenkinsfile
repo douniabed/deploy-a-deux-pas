@@ -170,26 +170,21 @@ pipeline {
                     """
 
                     // Deploy with docker-compose
-                    // All env vars provided by Jenkins (credentials + parameters)
-                    // No .env file needed - docker-compose reads from shell environment
+                    // Generate .env from template (persists for manual restarts)
                     sh """
                         cd docker
 
-                        # Versions and ports from Jenkins parameters
+                        # Export all variables for envsubst
                         export BACK_VERSION=${backVersion}
                         export FRONT_VERSION=${frontVersion}
+                        export SPRING_PROFILE=docker
                         export BACK_PORT=${backPort}
                         export FRONT_PORT=${frontPort}
                         export MYSQL_PORT=${mysqlPort}
-
-                        # Non-secrets
-                        export SPRING_PROFILE=docker
                         export MYSQL_DATABASE=adeuxpas-db
 
-                        # Secrets are already in env from Jenkins credentials block:
-                        # MYSQL_CREDENTIALS_USR, MYSQL_CREDENTIALS_PSW, JWT_SECRET,
-                        # CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, STRIPE_API_KEY,
-                        # STRIPE_WEBHOOK_SECRET, MAPBOX_ACCESS_TOKEN
+                        # Generate .env from template (secrets come from Jenkins env)
+                        envsubst < .env.template > .env
 
                         docker-compose pull
                         docker-compose up -d
