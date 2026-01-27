@@ -32,13 +32,6 @@ pipeline {
         PY_COLORS = '1'
         ANSIBLE_NOCOLOR = '0'
         DOCKERHUB_CREDENTIALS = credentials('dockerhub-credentials')
-        MYSQL_CREDENTIALS = credentials('mysql-credentials')
-        JWT_SECRET = credentials('jwt-secret')
-        CLOUDINARY_API_KEY = credentials('cloudinary-api-key')
-        CLOUDINARY_API_SECRET = credentials('cloudinary-api-secret')
-        STRIPE_API_KEY = credentials('stripe-api-key')
-        STRIPE_WEBHOOK_SECRET = credentials('stripe-webhook-secret')
-        MAPBOX_ACCESS_TOKEN = credentials('mapbox-token')
     }
 
     stages {
@@ -153,13 +146,7 @@ pipeline {
             steps {
                 script {
                     echo "=== Deploying with Docker Compose ==="
-
-                    // Set ports for local Docker deployment
-                    // Using non-default ports to avoid conflicts with ng serve (4200), Spring Boot (8080/8081), and MySQL (3306)
-                    def backPort = '9081'
-                    def frontPort = '3000'
-                    def mysqlPort = '3307'
-
+                    def frontPort = '1080'
                     // Set versions (use latest if not specified)
                     def backVersion = params.BACK_APP_VERSION ?: 'latest'
                     def frontVersion = params.FRONT_APP_VERSION ?: 'latest'
@@ -170,22 +157,11 @@ pipeline {
                     """
 
                     // Deploy with docker-compose
-                    // Generate .env from template (persists for manual restarts)
                     sh """
-                        cd docker
-
-                        # Export all variables for envsubst
-                        export BACK_VERSION=${backVersion}
-                        export FRONT_VERSION=${frontVersion}
-                        export SPRING_PROFILE=docker
-                        export BACK_PORT=${backPort}
-                        export FRONT_PORT=${frontPort}
-                        export MYSQL_PORT=${mysqlPort}
-                        export MYSQL_DATABASE=adeuxpas-db
-
-                        # Generate .env from template (secrets come from Jenkins env)
-                        envsubst < .env.template > .env
-
+                        cd docker-compose
+                        curl -O http://nexus.local:8085/repository/a-deux-pas-resources/back/application-dev.properties
+                        mv application-dev.properties application-docker.properties
+                        docker-compose down || true
                         docker-compose pull
                         docker-compose up -d
                     """
@@ -194,7 +170,7 @@ pipeline {
 
                     // Show deployment status
                     sh """
-                        cd docker
+                        cd docker-compose
                         echo "=== Docker Compose Status ==="
                         docker-compose ps
                         echo "=== Container Logs (last 20 lines) ==="
@@ -206,9 +182,6 @@ pipeline {
                     echo "============================================"
                     echo "Application URLs:"
                     echo "  Frontend:    http://localhost:${frontPort}"
-                    echo "  Backend:     http://localhost:${backPort}"
-                    echo "  Backend API: http://localhost:${frontPort}/api"
-                    echo "  MySQL:       jdbc:mysql://localhost:${mysqlPort}/adeuxpas-db"
                     echo "============================================"
                 }
             }
