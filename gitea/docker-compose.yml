@@ -2,6 +2,8 @@ services:
   gitea:
     image: gitea/gitea:latest
     container_name: gitea
+    extra_hosts:
+      - "jenkins.local:host-gateway"
     environment:
       - USER_UID=1000
       - USER_GID=1000
