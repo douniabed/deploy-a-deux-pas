@@ -151,11 +151,6 @@ pipeline {
                     def backVersion = params.BACK_APP_VERSION ?: 'latest'
                     def frontVersion = params.FRONT_APP_VERSION ?: 'latest'
 
-                    // Login to DockerHub to pull images
-                    sh """
-                        echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin
-                    """
-                    
                     // Download properties file
                     sh """
                         cd docker-compose
@@ -163,14 +158,17 @@ pipeline {
                         mv application-dev.properties application-docker.properties
                     """
 
-                    // Deploy with docker-compose
+                    // Login to DockerHub to pull images
                     sh """
-                        docker-compose down || true
-                        docker-compose pull
-                        docker-compose up -d
+                        echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin
                     """
 
-                    sh "docker logout"
+                    // Deploy with docker-compose
+                    sh """
+                        docker-compose up --force-recreate --pull always -d
+                        docker image prune -f
+                        docker logout
+                    """
 
                     // Show deployment status
                     sh """
