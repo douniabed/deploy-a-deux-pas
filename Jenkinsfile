@@ -180,7 +180,7 @@ pipeline {
                     echo "============================================"
                     echo "Docker Compose deployment completed successfully"
                     echo "============================================"
-                    echo "Application URLs:"
+                    echo "Application URL:"
                     echo "  Frontend:    http://localhost:${frontPort}"
                     echo "============================================"
                 }
