@@ -1,5 +1,6 @@
 # requires application-docker.properties at same level as this file
 # docker-compose pull && docker-compose up -d
+# Access app : http://localhost:1080/
 
 services:
   mysql:
