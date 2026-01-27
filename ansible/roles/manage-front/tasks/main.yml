@@ -1,0 +1,193 @@
+---
+- name: Display action information
+  debug:
+    msg: "Action: {{ action }} on frontend {{ app_name }} in {{ target_env }}"
+
+# STOP ACTION - Swap index.html with stopped page
+- name: Check if frontend is currently running (for stop)
+  stat:
+    path: "{{ front_deploy_dir }}/index.html"
+  register: active_index
+  when: action == 'stop'
+
+- name: Check if already stopped
+  stat:
+    path: "{{ front_deploy_dir }}/index.html.active"
+  register: stopped_index
+  when: action == 'stop'
+
+- name: Rename active index.html to index.html.active
+  command: mv "{{ front_deploy_dir }}/index.html" "{{ front_deploy_dir }}/index.html.active"
+  when: action == 'stop' and active_index.stat.exists and not stopped_index.stat.exists
+
+- name: Create stopped page index.html
+  copy:
+    dest: "{{ front_deploy_dir }}/index.html"
+    content: |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head>
+          <meta charset="UTF-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Application Stopped - {{ target_env }}</title>
+          <style>
+              body {
+                  font-family: Arial, sans-serif;
+                  display: flex;
+                  justify-content: center;
+                  align-items: center;
+                  height: 100vh;
+                  margin: 0;
+                  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                  color: white;
+              }
+              .container {
+                  text-align: center;
+                  padding: 40px;
+                  background: rgba(0, 0, 0, 0.3);
+                  border-radius: 10px;
+                  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+              }
+              h1 {
+                  font-size: 3em;
+                  margin: 0 0 20px 0;
+              }
+              p {
+                  font-size: 1.2em;
+                  margin: 10px 0;
+              }
+              .env {
+                  font-weight: bold;
+                  color: #ffd700;
+              }
+          </style>
+      </head>
+      <body>
+          <div class="container">
+              <h1>⏸️ Application Stopped</h1>
+              <p>The <span class="env">{{ target_env }}</span> environment is currently stopped.</p>
+              <p>Please contact the administrator to start the application.</p>
+          </div>
+      </body>
+      </html>
+    mode: '0644'
+  when: action == 'stop' and active_index.stat.exists and not stopped_index.stat.exists
+  register: stop_result
+
+- name: Display stop result
+  debug:
+    msg: "Frontend stopped successfully. index.html replaced with stopped page, active version saved as index.html.active"
+  when: action == 'stop' and stop_result is succeeded
+
+- name: Frontend already stopped
+  debug:
+    msg: "Frontend is already stopped (index.html.active exists)"
+  when: action == 'stop' and stopped_index.stat.exists
+
+# START ACTION - Restore index.html from index.html.active
+- name: Check if frontend is currently stopped (for start)
+  stat:
+    path: "{{ front_deploy_dir }}/index.html.active"
+  register: stopped_index_start
+  when: action == 'start'
+
+- name: Remove stopped page
+  file:
+    path: "{{ front_deploy_dir }}/index.html"
+    state: absent
+  when: action == 'start' and stopped_index_start.stat.exists
+
+- name: Restore active index.html
+  command: mv "{{ front_deploy_dir }}/index.html.active" "{{ front_deploy_dir }}/index.html"
+  when: action == 'start' and stopped_index_start.stat.exists
+  register: start_result
+
+- name: Display start result
+  debug:
+    msg: "Frontend started successfully. Active index.html restored"
+  when: action == 'start' and start_result is succeeded
+
+- name: Check frontend HTTP endpoint after start
+  uri:
+    url: "{{ front_version_url }}"
+    method: GET
+    status_code: 200
+    headers:
+      Cache-Control: "no-cache, no-store, must-revalidate"
+      Pragma: "no-cache"
+      Expires: "0"
+  register: http_check_start
+  when: action == 'start' and start_result is succeeded
+  retries: 5
+  delay: 2
+  until: http_check_start.status == 200
+  ignore_errors: yes
+
+- name: Display frontend version after start
+  debug:
+    msg: |
+      Frontend is accessible!
+      Version JSON: {{ http_check_start.json | to_nice_json }}
+  when: action == 'start' and start_result is succeeded and http_check_start is succeeded
+
+- name: Frontend already running
+  debug:
+    msg: "Frontend is already running (index.html.active does not exist)"
+  when: action == 'start' and not stopped_index_start.stat.exists
+
+# RESTART ACTION - Just verify status
+- name: Restart is a no-op for frontend (static files)
+  debug:
+    msg: "Frontend restart requested. Frontend serves static files from Apache, no restart needed. Checking status..."
+  when: action == 'restart'
+
+# STATUS ACTION
+- name: Check if frontend deployment directory exists
+  stat:
+    path: "{{ front_deploy_dir }}"
+  register: deploy_dir
+  when: action == 'status' or action == 'restart'
+
+- name: Check if index.html exists (running)
+  stat:
+    path: "{{ front_deploy_dir }}/index.html"
+  register: index_file
+  when: action == 'status' or action == 'restart'
+
+- name: Check if index.html.active exists (stopped)
+  stat:
+    path: "{{ front_deploy_dir }}/index.html.active"
+  register: index_active_file
+  when: action == 'status' or action == 'restart'
+
+- name: Display deployment status
+  debug:
+    msg: |
+      Deployment directory: {{ 'EXISTS' if deploy_dir.stat.exists else 'NOT FOUND' }}
+      Frontend state: {{ 'STOPPED (index.html.active exists)' if index_active_file.stat.exists else 'RUNNING' if index_file.stat.exists else 'UNKNOWN' }}
+  when: action == 'status' or action == 'restart'
+
+- name: Check frontend HTTP endpoint
+  uri:
+    url: "{{ front_version_url }}"
+    method: GET
+    status_code: 200
+    headers:
+      Cache-Control: "no-cache, no-store, must-revalidate"
+      Pragma: "no-cache"
+      Expires: "0"
+  register: http_check
+  when: action == 'status' or action == 'restart'
+  ignore_errors: yes
+
+- name: Display frontend HTTP status
+  debug:
+    msg: |
+      Frontend HTTP endpoint: {{ 'ACCESSIBLE' if http_check is succeeded else 'NOT ACCESSIBLE' }}
+      URL: {{ front_version_url }}
+      {% if http_check is succeeded %}
+      Version JSON: {{ http_check.json | to_nice_json }}
+      {% else %}
+      Version: N/A
+      {% endif %}
+  when: action == 'status' or action == 'restart'

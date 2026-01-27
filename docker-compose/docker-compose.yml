@@ -1,0 +1,50 @@
+# requires application-docker.properties at same level as this file
+# docker-compose pull && docker-compose up -d
+# Access app : http://localhost:1080/
+
+services:
+  mysql:
+    image: mysql:8
+    container_name: adeuxpas-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: adeuxpas-user-password
+      MYSQL_DATABASE: adeuxpas-db
+      MYSQL_USER: adeuxpas-user
+      MYSQL_PASSWORD: adeuxpas-user-password
+    volumes:
+      - mysql_data:/var/lib/mysql
+    ports:
+      - "3307:3306"
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-P", "3307"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  backend:
+    image: douniabed/back-a-deux-pas:latest
+    container_name: adeuxpas-backend
+    ports:
+      - "8081:8081"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SPRING_CONFIG_ADDITIONAL_LOCATION: file:/app/application-docker.properties
+    volumes:
+      - ./application-docker.properties:/app/application-docker.properties:ro,z
+    depends_on:
+      mysql:
+        condition: service_healthy
+    restart: unless-stopped
+
+  frontend:
+    image: douniabed/front-a-deux-pas:latest
+    container_name: adeuxpas-frontend
+    ports:
+      - "1080:1080"
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+volumes:
+  mysql_data:

@@ -1,0 +1,129 @@
+---
+- name: Display action information
+  debug:
+    msg: "Action: {{ action }} on service {{ service_name }}"
+
+- name: Stop backend service
+  systemd:
+    name: "{{ service_name }}"
+    state: stopped
+    scope: user
+  when: action == 'stop'
+  register: stop_result
+
+- name: Display stop result
+  debug:
+    msg: "Service {{ service_name }} stopped successfully"
+  when: action == 'stop' and stop_result is succeeded
+
+- name: Start backend service
+  systemd:
+    name: "{{ service_name }}"
+    state: started
+    scope: user
+  when: action == 'start'
+  register: start_result
+
+- name: Display start result
+  debug:
+    msg: "Service {{ service_name }} started successfully"
+  when: action == 'start' and start_result is succeeded
+
+- name: Wait for backend to be ready after start
+  uri:
+    url: "{{ back_version_url }}"
+    method: GET
+    status_code: 200
+    headers:
+      Cache-Control: "no-cache, no-store, must-revalidate"
+      Pragma: "no-cache"
+      Expires: "0"
+  register: version_check
+  retries: 20
+  delay: 3
+  until: version_check.status == 200
+  when: action == 'start'
+  ignore_errors: yes
+
+- name: Display backend version after start
+  debug:
+    msg: |
+      Backend is ready!
+      Version JSON: {{ version_check.json | to_nice_json }}
+  when: action == 'start' and version_check is succeeded
+
+- name: Restart backend service
+  systemd:
+    name: "{{ service_name }}"
+    state: restarted
+    scope: user
+  when: action == 'restart'
+  register: restart_result
+
+- name: Display restart result
+  debug:
+    msg: "Service {{ service_name }} restarted successfully"
+  when: action == 'restart' and restart_result is succeeded
+
+- name: Wait for backend to be ready after restart
+  uri:
+    url: "{{ back_version_url }}"
+    method: GET
+    status_code: 200
+    headers:
+      Cache-Control: "no-cache, no-store, must-revalidate"
+      Pragma: "no-cache"
+      Expires: "0"
+  register: version_check_restart
+  retries: 20
+  delay: 3
+  until: version_check_restart.status == 200
+  when: action == 'restart'
+  ignore_errors: yes
+
+- name: Display backend version after restart
+  debug:
+    msg: |
+      Backend is ready!
+      Version JSON: {{ version_check_restart.json | to_nice_json }}
+  when: action == 'restart' and version_check_restart is succeeded
+
+- name: Get backend service status
+  systemd:
+    name: "{{ service_name }}"
+    scope: user
+  register: service_status
+  when: action == 'status'
+
+- name: Display service status
+  debug:
+    msg: |
+      Service: {{ service_name }}
+      Active State: {{ service_status.status.ActiveState }}
+      Sub State: {{ service_status.status.SubState }}
+      Load State: {{ service_status.status.LoadState }}
+  when: action == 'status'
+
+- name: Check backend HTTP endpoint
+  uri:
+    url: "{{ back_version_url }}"
+    method: GET
+    status_code: 200
+    headers:
+      Cache-Control: "no-cache, no-store, must-revalidate"
+      Pragma: "no-cache"
+      Expires: "0"
+  register: http_check
+  when: action == 'status'
+  ignore_errors: yes
+
+- name: Display backend HTTP status
+  debug:
+    msg: |
+      Backend HTTP endpoint: {{ 'ACCESSIBLE' if http_check is succeeded else 'NOT ACCESSIBLE' }}
+      {% if http_check is succeeded %}
+      Version JSON: {{ http_check.json | to_nice_json }}
+      {% else %}
+      Version: N/A
+      {% endif %}
+  when: action == 'status'

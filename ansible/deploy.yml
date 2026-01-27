@@ -1,0 +1,15 @@
+---
+- name: Deploy A Deux Pas Applications
+  hosts: "{{ target_env | lower }}_{{ app_type }}"
+  gather_facts: yes
+
+  tasks:
+    - name: Include backend deployment role
+      include_role:
+        name: deploy-backend
+      when: app_type == 'back'
+
+    - name: Include frontend deployment role
+      include_role:
+        name: deploy-frontend
+      when: app_type == 'front'

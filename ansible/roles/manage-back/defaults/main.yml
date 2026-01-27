@@ -1,0 +1,4 @@
+---
+# Default variables for backend lifecycle management
+app_name: "back-a-deux-pas"
+service_name: "backend-adp-{{ target_env | lower }}"

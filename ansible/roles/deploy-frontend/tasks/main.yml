@@ -1,0 +1,105 @@
+---
+- name: Display deployment information
+  debug:
+    msg: "Deploying {{ app_name }} version {{ front_app_version }} to {{ target_env }}"
+
+- name: Ensure deployment directory exists
+  file:
+    path: "{{ front_deploy_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Check if deployment directory is writable
+  file:
+    path: "{{ front_deploy_dir }}/.write_test"
+    state: touch
+    mode: '0644'
+  register: write_test
+
+- name: Remove write test file
+  file:
+    path: "{{ front_deploy_dir }}/.write_test"
+    state: absent
+  when: write_test is succeeded
+
+- name: Clean deployment directory
+  file:
+    path: "{{ front_deploy_dir }}"
+    state: absent
+
+- name: Recreate deployment directory
+  file:
+    path: "{{ front_deploy_dir }}"
+    state: directory
+    mode: '0755'
+
+- name: Download frontend artifact from Nexus (on controller)
+  maven_artifact:
+    group_id: fr.a-deux-pas
+    artifact_id: "{{ app_name }}"
+    version: "{{ front_app_version }}"
+    extension: tar.gz
+    repository_url: "{{ nexus_url }}/repository/{{ nexus_repo }}"
+    dest: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
+  delegate_to: localhost
+  register: download_result
+
+- name: Copy frontend artifact to target machine
+  copy:
+    src: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
+    dest: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
+    mode: '0644'
+
+- name: Clean up artifact from controller
+  file:
+    path: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
+    state: absent
+  delegate_to: localhost
+
+- name: Extract frontend artifact
+  unarchive:
+    src: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
+    dest: "{{ front_deploy_dir }}"
+    remote_src: yes
+    mode: '0755'
+
+- name: Clean up downloaded artifact
+  file:
+    path: "/tmp/{{ app_name }}-{{ front_app_version }}.tar.gz"
+    state: absent
+
+- name: Read existing config.json from deployed frontend
+  slurp:
+    src: "{{ front_deploy_dir }}/assets/config.json"
+  register: config_file
+
+- name: Update apiUrl and environmentName in config.json for environment
+  copy:
+    content: "{{ config_file.content | b64decode | from_json | combine({'apiUrl': back_api_url, 'environmentName': target_env | lower}) | to_nice_json }}"
+    dest: "{{ front_deploy_dir }}/assets/config.json"
+    mode: '0644'
+
+- name: Wait for frontend to be accessible
+  uri:
+    url: "{{ front_version_url }}"
+    method: GET
+    status_code: 200
+    headers:
+      Cache-Control: "no-cache, no-store, must-revalidate"
+      Pragma: "no-cache"
+      Expires: "0"
+  register: version_check
+  retries: 10
+  delay: 3
+  until: version_check.status == 200
+
+- name: Verify deployed version
+  assert:
+    that:
+      - version_check.json.version == front_app_version
+    fail_msg: "Deployed version {{ version_check.json.version }} does not match expected version {{ front_app_version }}"
+    success_msg: "Frontend version {{ front_app_version }} deployed successfully"
+
+- name: Display deployment success
+  debug:
+    msg: "Frontend {{ front_app_version }} deployed successfully to {{ target_env }}"

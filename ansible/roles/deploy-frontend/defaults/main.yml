@@ -1,0 +1,5 @@
+---
+# Default variables for frontend deployment
+nexus_url: "http://nexus.local:8085"
+nexus_repo: "maven-adp-front"
+app_name: "front-a-deux-pas"
