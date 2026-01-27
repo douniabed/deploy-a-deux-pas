@@ -155,12 +155,16 @@ pipeline {
                     sh """
                         echo ${DOCKERHUB_CREDENTIALS_PSW} | docker login -u ${DOCKERHUB_CREDENTIALS_USR} --password-stdin
                     """
-
-                    // Deploy with docker-compose
+                    
+                    // Download properties file
                     sh """
                         cd docker-compose
                         curl -O http://nexus.local:8085/repository/a-deux-pas-resources/back/application-dev.properties
                         mv application-dev.properties application-docker.properties
+                    """
+
+                    // Deploy with docker-compose
+                    sh """
                         docker-compose down || true
                         docker-compose pull
                         docker-compose up -d
