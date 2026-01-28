@@ -154,8 +154,7 @@ pipeline {
                     // Download properties file
                     sh """
                         cd docker-compose
-                        curl -O http://nexus.local:8085/repository/a-deux-pas-resources/back/application-dev.properties
-                        mv application-dev.properties application-docker.properties
+                        curl -O http://nexus.local:8085/repository/a-deux-pas-resources/back/application-docker.properties
                     """
 
                     // Login to DockerHub to pull images
